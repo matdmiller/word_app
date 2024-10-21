@@ -69,7 +69,7 @@ def before(req, session):
     guesses.xtra(user_id=auth)
     users.xtra(user_id=auth)
 
-beforeware = Beforeware(before, skip=['/login', oauth_callback_path, r'/favicon\.ico', r'/static/.*', r'.*\.css'])
+beforeware = Beforeware(before, skip=['/login', oauth_callback_path, r'/favicon\.ico', r'/static/.*', r'.*\.css', r'/static/images/.*'])
 
 def _not_found(req, exc): return Titled('Oh no!', Div('We could not find that page :('))
 
@@ -119,7 +119,14 @@ def login(request):
     print(f"redir: {redir}")
     login_link = oauth_client.login_link(redir)
     print(f"login_link: {login_link}")
-    return Div(P("Not logged in"), A('Log in with Google', href=login_link))
+    return Titled('Login', Article(
+        Div(
+            Header(H2('Login Options')),
+            Hr(),
+            A(Img(src='/static/images/signinwithgoogle.png', alt='Google Sign-in'), href=login_link),
+            style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;"
+        )
+    ))
 
 
 @app.get("/logout")
@@ -138,13 +145,15 @@ def get_word(auth):
     words_result = words(where=f"user_id='{auth}'")
     if not words_result: return 'No words found. Add some starter words.'
     word = choice(words_result)
+    word_display_modification = choice([str.lower, str.upper, str.title])
+    word_str = word_display_modification(word.word)
     displayed_at = datetime.now().isoformat()
     return Article(
-         Div(word.word, style="font-size: clamp(16px, 20vw, 200px); text-align: center; padding: 10px; width: 100%; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"), 
+         Div(word_str, style="font-size: clamp(16px, 20vw, 200px); text-align: center; padding: 10px; width: 100%; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"), 
          Footer(
              Div(
-                 Button('👍', hx_post=f'/guess?word={word.word}&correct=correct&displayed_at={displayed_at}', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;', hx_trigger="click, keyup[key=='y'||key=='c'||key=='ArrowUp'] from:body"),
-                 Button('👎', hx_post=f'/guess?word={word.word}&correct=incorrect&displayed_at={displayed_at}', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;', hx_trigger="click, keyup[key=='n'||key=='x'||key=='ArrowDown'] from:body"),
+                 Button('👍', hx_post=f'/guess?word={word_str}&correct=correct&displayed_at={displayed_at}', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;', hx_trigger="click, keyup[key=='y'||key=='c'||key=='ArrowUp'] from:body"),
+                 Button('👎', hx_post=f'/guess?word={word_str}&correct=incorrect&displayed_at={displayed_at}', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;', hx_trigger="click, keyup[key=='n'||key=='x'||key=='ArrowDown'] from:body"),
                  Button('Next', hx_get='/next_word', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;', hx_trigger="click, keyup[key==' '||key=='Enter'||key=='ArrowRight'] from:body"),
                  Button('Hide', onclick=f"htmx.ajax('PUT', '/words?id={word.id}&display=false', {{target: 'body', swap: 'none'}}); htmx.ajax('GET', '/next_word', {{target: '#word', swap: 'outerHTML'}});", style='margin: 0.5rem;'),
 
@@ -166,7 +175,7 @@ def get(auth):
 
 @rt("/data")
 def get(auth):
-    return Titled('Data',
+    return Title('Data'), Main(get_nav(auth), H1('Data'),
         Div(f'Auth: {auth}'),
         H2('Users'),
         Table(
@@ -216,7 +225,8 @@ def get(auth):
                 Td(g.displayed_at),
                 Td(g.guessed_at)
             ) for g in guesses()]
-        )
+        ),
+        cls='container'
     )
 
 def get_words_table_row(w: Word, hx_swap_oob: str = None):

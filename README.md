@@ -35,6 +35,7 @@ A web application to help teach young children how to read and track their progr
 
 ## TODO
 
+- Add the ability to have multiple kids per the same login account.
 - Record the time that each guess was made
 - Show the average time it took to guess each word
 - Implement keyboard shortcuts for recording guesses and skipping to the next word
