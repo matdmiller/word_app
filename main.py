@@ -244,7 +244,7 @@ def get_words_table_row(w: Word, hx_swap_oob: str = None):
     )
 
 def get_words_table(auth):
-    words_result = words(where=f"user_id='{auth}'")
+    words_result = words(where=f"user_id='{auth}'", order_by='word')
     return Table(
             Tr(
                 Th(Strong('Word')),
