@@ -3,8 +3,12 @@ from fasthtml.oauth import GoogleAppClient, redir_url
 from random import choice
 from datetime import datetime
 import json
+import os
 
-REDIRECT_SCHEME = 'http'
+if os.getenv('RAILWAY_PROJECT_NAME', None) is not None:
+    REDIRECT_SCHEME = 'https'
+else:
+    REDIRECT_SCHEME = 'http'
 
 ### Database
 db = database('data/wordapp.db')
@@ -24,7 +28,11 @@ User = users.dataclass()
 
 ### Auth
 try:
-    oauth_client = GoogleAppClient(client_id=os.getenv('GOOGLE_CLIENT_ID'), client_secret=os.getenv('GOOGLE_CLIENT_SECRET'))
+    _client_id = os.getenv('GOOGLE_CLIENT_ID')
+    _client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
+    if _client_id is None or _client_secret is None:
+        raise Exception('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set')
+    oauth_client = GoogleAppClient(client_id=_client_id, client_secret=_client_secret)
 except Exception as e:
     print(f"Error: {e}")
     oauth_client = GoogleAppClient.from_file('../client_secret_48335797932-44ckn1tgpps1v9i3faj3u8onjo5blui7.apps.googleusercontent.com.json')
