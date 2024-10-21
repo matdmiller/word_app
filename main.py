@@ -74,6 +74,7 @@ beforeware = Beforeware(before, skip=['/login', oauth_callback_path, r'/favicon\
 def _not_found(req, exc): return Titled('Oh no!', Div('We could not find that page :('))
 
 app = FastHTML(hdrs=(picolink), exception_handlers={404: _not_found}, before=beforeware, secret_session_key=SECRET_SESSION_KEY)
+setup_toasts(app)
 rt = app.route
 
 @rt("/{fname:path}.{ext:static}")
@@ -142,9 +143,11 @@ def get_word(auth):
          Div(word.word, style="font-size: clamp(16px, 20vw, 200px); text-align: center; padding: 10px; width: 100%; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"), 
          Footer(
              Div(
-                 Button('👍', hx_post=f'/guess?word={word.word}&correct=correct&displayed_at={displayed_at}', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;'),
-                 Button('👎', hx_post=f'/guess?word={word.word}&correct=incorrect&displayed_at={displayed_at}', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;'),
-                 Button('Next', hx_get='/next_word', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;'),
+                 Button('👍', hx_post=f'/guess?word={word.word}&correct=correct&displayed_at={displayed_at}', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;', hx_trigger="click, keyup[key=='y'||key=='c'||key=='ArrowUp'] from:body"),
+                 Button('👎', hx_post=f'/guess?word={word.word}&correct=incorrect&displayed_at={displayed_at}', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;', hx_trigger="click, keyup[key=='n'||key=='x'||key=='ArrowDown'] from:body"),
+                 Button('Next', hx_get='/next_word', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;', hx_trigger="click, keyup[key==' '||key=='Enter'||key=='ArrowRight'] from:body"),
+                 Button('Hide', onclick=f"htmx.ajax('PUT', '/words?id={word.id}&display=false', {{target: 'body', swap: 'none'}}); htmx.ajax('GET', '/next_word', {{target: '#word', swap: 'outerHTML'}});", style='margin: 0.5rem;'),
+
                  class_='container text-center'
              ),
              style='display: flex; justify-content: center;'
@@ -216,15 +219,115 @@ def get(auth):
         )
     )
 
+def get_words_table_row(w: Word, hx_swap_oob: str = None):
+    return Tr(
+        Td(w.id, hidden=True),
+        Td(w.word),
+        Td(w.difficulty),
+        Td(A('✅' if w.display else '❌', hx_put=f'/words?id={w.id}&display=true' if not w.display else f'/words?id={w.id}&display=false')),
+        Td(w.added_on),
+        Td(
+            # A('Edit', hx_get=f'/words/modal?id={w.id}', hx_target='#words-modal', hx_swap='outerHTML'), 
+            A('Delete', hx_delete=f'/words?id={w.id}', hx_target=f'#words-row-{w.id}', hx_swap='delete')),
+        id=f"words-row-{w.id}",
+        hx_swap_oob=hx_swap_oob
+    )
+
+def get_words_table(auth):
+    words_result = words(where=f"user_id='{auth}'")
+    return Table(
+            Tr(
+                Th(Strong('Word')),
+                Th(Strong('Difficulty')),
+                Th(Strong('Displayed')),
+                Th(Strong('Added On')),
+                Th(Strong('Actions')),
+            ),
+            *[get_words_table_row(w) for w in words_result],
+            id='words-table',
+            hx_swap_oob="true"
+        )
+
+@rt("/words")
+def get(auth):
+    return Title('Words'), Main(
+        get_nav(auth),
+        H2('Words'),
+        Button('Add word', hx_get='/words/modal', hx_target='#words-modal', hx_swap='outerHTML'),
+        Dialog(id='words-modal'),
+        get_words_table(auth),
+        cls='container'
+    )
+
+@rt("/words/modal")
+def get(auth):
+    return Dialog(
+            Article(
+                H2('Add word'),
+                Form(
+                    Label('Word:', for_='word'),
+                    Input(name='word', id='word', placeholder='Word'),
+                    Label('Difficulty (1 easy - 5 hard):', for_='difficulty'),
+                    Input(name='difficulty', id='difficulty', type='number', min='1', max='5', placeholder='Difficulty'),
+                    id='words-modal-form'
+                ),
+                Footer(
+                    Div(
+                        Button('Add', type='submit', hx_post='/words', hx_swap='outerHTML', hx_include='#words-modal-form'),
+                        Button('Cancel', type='button', onclick='me("#words-modal").attribute("open", null)'),
+                        style='display: grid; grid-template-columns: 1fr 1fr; gap: 10px;'
+                    )
+                ),
+                cls='modal-content'
+            ),
+            id='words-modal',
+            open=True
+        )
+
+@rt("/words")
+def post(auth, session, word: str, difficulty: int):
+    word = word.lower()
+    assert difficulty in range(1, 6), 'Difficulty must be between 1 and 5'
+    existing_words = [w.word for w in words(f"user_id='{auth}' AND word=?", (word,))]
+    print('add-word query result:', existing_words)
+    if word in existing_words:
+        add_toast(session, f"Word '{word}' already exists.", "warning")
+        return Dialog(id='words-modal', hx_swap_oob='true')
+    words.insert(Word(word=word, user_id=auth, difficulty=difficulty, display=True, added_on=datetime.now().isoformat()))
+    add_toast(session, f"Word '{word}' was added.", "success")
+    return Dialog(id='words-modal', hx_swap_oob='true'), get_words_table(auth)
+
+@rt("/words")
+def delete(auth, id: int, session):
+    words.xtra(user_id=auth)
+    word = words[id].word
+    words.delete(id)
+    add_toast(session, f"Word '{word}' was deleted.", "success")
+    return None
+
+@rt("/words")
+def put(auth, id: int, word: str = None, difficulty: int = None, display: bool = None):
+    words.xtra(user_id=auth)
+    update_dict = dict(id=id)
+    if word is not None: update_dict['word'] = word
+    if difficulty is not None: update_dict['difficulty'] = difficulty
+    if display is not None: update_dict['display'] = display
+    updated_word = words.update(update_dict)
+    return get_words_table_row(updated_word, hx_swap_oob='true')
+
 def get_nav(auth):
     user = users[auth]
     return Nav(
         Ul(Li(Strong('Learn to read'))),
         Ul(
         Li(Span(f"{user.name} ({user.email})", cls='secondary')),
-        Li(Details(Summary('Account'),
+        Li(Details(Summary('Navigation'),
                 Ul(
-                    Li(A('Logout', href='/logout')),dir='rtl'
+                    Li(A('Home', href='/')),
+                    Li(A('Words', href='/words')),
+                    Li(A('Data', href='/data')),
+                    Li(A('Logout', href='/logout')),
+                    dir='rtl'
                 ),
                 cls='dropdown'
             )
@@ -246,6 +349,6 @@ def get(auth):
 
 @rt("/")
 def get(auth):
-    return Title('Learn to read'), Main(get_nav(auth), get_word(auth), Footer(Button('Add starter words', hx_get='/add-starter-words'), A(Button('Data'), href='/data')), cls='container')
+    return Title('Learn to read'), Main(get_nav(auth), get_word(auth), Footer(Button('Add starter words', hx_get='/add-starter-words')), cls='container')
 
 serve()
