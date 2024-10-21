@@ -23,7 +23,12 @@ if users not in db.t: users.create(user_id=str, name=str, email=str, user_info=s
 User = users.dataclass()
 
 ### Auth
-oauth_client = GoogleAppClient.from_file('../client_secret_48335797932-44ckn1tgpps1v9i3faj3u8onjo5blui7.apps.googleusercontent.com.json') #TODO: move to env var
+try:
+    oauth_client = GoogleAppClient(client_id=os.getenv('GOOGLE_CLIENT_ID'), client_secret=os.getenv('GOOGLE_CLIENT_SECRET'))
+except Exception as e:
+    print(f"Error: {e}")
+    oauth_client = GoogleAppClient.from_file('../client_secret_48335797932-44ckn1tgpps1v9i3faj3u8onjo5blui7.apps.googleusercontent.com.json')
+
 oauth_callback_path = '/auth_redirect'
 
 
