@@ -1,5 +1,5 @@
 # Word App
-
+ 
 A web application to help teach young children how to read and track their progress.
 
 ## Features

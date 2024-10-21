@@ -10,6 +10,8 @@ if os.getenv('RAILWAY_PROJECT_NAME', None) is not None:
 else:
     REDIRECT_SCHEME = 'http'
 
+SECRET_SESSION_KEY = os.getenv('SECRET_SESSION_KEY', None)
+
 ### Database
 db = database('data/wordapp.db')
 
@@ -71,7 +73,7 @@ beforeware = Beforeware(before, skip=['/login', oauth_callback_path, r'/favicon\
 
 def _not_found(req, exc): return Titled('Oh no!', Div('We could not find that page :('))
 
-app = FastHTML(hdrs=(picolink), exception_handlers={404: _not_found}, before=beforeware)
+app = FastHTML(hdrs=(picolink), exception_handlers={404: _not_found}, before=beforeware, secret_session_key=SECRET_SESSION_KEY)
 rt = app.route
 
 @rt("/{fname:path}.{ext:static}")
