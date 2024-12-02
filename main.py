@@ -141,22 +141,29 @@ def logout(session):
 #     dt = ' (done)' if self.done else ''
 #     return Li(show, dt, ' | ', edit, id=tid(self.id))
 
-def get_word(auth):
-    words_result = words(where=f"user_id='{auth}'")
+def get_word(auth, session):
+    words_result = words(where=f"user_id='{auth}' AND display=true")
     if not words_result: return 'No words found. Add some starter words.'
+    session.setdefault('word_history', [])
     word = choice(words_result)
     word_display_modification = choice([str.lower, str.upper, str.title])
     word_str = word_display_modification(word.word)
     displayed_at = datetime.now().isoformat()
+    session['word_history'] = [word.id] + session['word_history']
+    if len(session['word_history']) > 10: session['word_history'] = session['word_history'][:10]
     return Article(
          Div(word_str, style="font-size: clamp(16px, 20vw, 200px); text-align: center; padding: 10px; width: 100%; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"), 
          Footer(
              Div(
-                 Button('👍', hx_post=f'/guess?word={word_str}&correct=correct&displayed_at={displayed_at}', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;', hx_trigger="click, keyup[key=='y'||key=='c'||key=='ArrowUp'] from:body"),
-                 Button('👎', hx_post=f'/guess?word={word_str}&correct=incorrect&displayed_at={displayed_at}', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;', hx_trigger="click, keyup[key=='n'||key=='x'||key=='ArrowDown'] from:body"),
-                 Button('Next', hx_get='/next_word', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;', hx_trigger="click, keyup[key==' '||key=='Enter'||key=='ArrowRight'] from:body"),
-                 Button('Hide', onclick=f"htmx.ajax('PUT', '/words?id={word.id}&display=false', {{target: 'body', swap: 'none'}}); htmx.ajax('GET', '/next_word', {{target: '#word', swap: 'outerHTML'}});", style='margin: 0.5rem;'),
-
+                 Button('👍', hx_post=f'/guess?word={word_str}&correct=correct&displayed_at={displayed_at}', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;', 
+                        hx_trigger="click, keyup[key=='y'||key=='c'||key=='ArrowUp'] from:body", data_tooltip="Correct - Press y, c, or the up arrow"),
+                 Button('👎', hx_post=f'/guess?word={word_str}&correct=incorrect&displayed_at={displayed_at}', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;', 
+                        hx_trigger="click, keyup[key=='n'||key=='x'||key=='i'||key=='ArrowDown'] from:body", data_tooltip="Incorrect - Press n, x, i, or the down arrow"),
+                 Button('Next', hx_get='/next_word', hx_target='#word', hx_swap='outerHTML', style='margin: 0.5rem;', 
+                        hx_trigger="click, keyup[key==' '||key=='Enter'||key=='ArrowRight'] from:body", data_tooltip="Next - Press space, enter, or the right arrow"),
+                 Button('Hide', hx_put=f'/words?id={word.id}&display=false', hx_trigger='click, keyup[key=="h"] from:body', 
+                        **{'hx-on::before-request':'htmx.ajax("GET", "/next_word", {target: "#word", swap: "outerHTML"})'}, style='margin: 0.5rem;', data_tooltip="Hide - Press h"),
+                #  Button('Hide', **{'hx-on::before-request':f"htmx.ajax('PUT', '/words?id={word.id}&display=false', {{target: 'body', swap: 'none'}}); htmx.ajax('GET', '/next_word', {{target: '#word', swap: 'outerHTML'}});"}, style='margin: 0.5rem;', hx_trigger="click, keyup[key=='h'] from:body", data_tooltip="Hide - Press h"),
                  class_='container text-center'
              ),
              style='display: flex; justify-content: center;'
@@ -164,14 +171,14 @@ def get_word(auth):
          id='word')
 
 @rt("/guess")
-def post(auth, word: str, correct: str, displayed_at: str = None):
+def post(auth, session, word: str, correct: str, displayed_at: str = None):
     is_correct = correct == 'correct'
     guesses.insert(Guess(word=word, user_id=auth, correct=is_correct, displayed_at=displayed_at, guessed_at=datetime.now().isoformat()))
-    return get_word(auth)
+    return get_word(auth, session)
 
 @rt("/next_word")
-def get(auth):
-    return get_word(auth)
+def get(auth, session):
+    return get_word(auth, session)
 
 @rt("/data")
 def get(auth):
@@ -358,7 +365,7 @@ def get(auth):
     return 'Starter words added.'
 
 @rt("/")
-def get(auth):
-    return Title('Learn to read'), Main(get_nav(auth), get_word(auth), Footer(Button('Add starter words', hx_get='/add-starter-words')), cls='container')
+def get(auth, session):
+    return Title('Learn to read'), Main(get_nav(auth), get_word(auth, session), Footer(Button('Add starter words', hx_get='/add-starter-words')), cls='container')
 
 serve()
